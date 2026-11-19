@@ -156,6 +156,12 @@ body.auth-locked .auth-close{display:block}
 .support-label{font-size:12px;font-weight:750;color:#b9c3d8}
 #support a{overflow-wrap:anywhere}
 
+
+.admin-only{display:none!important}
+#admin .field,#admin select,#admin textarea{color:var(--ink)}
+#admin .section-head{margin-top:8px}
+#admin .stat{min-width:0}
+@media(max-width:700px){#admin .stats{grid-template-columns:repeat(2,minmax(0,1fr))!important}#admin .form-row>*{min-width:100%}}
 </style>
 <style>#sessionSplash{display:none;position:fixed;inset:0;z-index:30;background:#070b18;color:#c9baff;align-items:center;justify-content:center;flex-direction:column;gap:14px;font:600 14px system-ui,sans-serif}body.auth-checking #sessionSplash{display:flex}body.auth-checking #welcomeLanding,body.auth-checking #authOverlay{display:none!important}.splash-spin{width:34px;height:34px;border:3px solid #34275e;border-top-color:#9b82ff;border-radius:50%;animation:splash-rot .8s linear infinite}@keyframes splash-rot{to{transform:rotate(360deg)}}</style>
 </head>
@@ -170,6 +176,7 @@ body.auth-locked .auth-close{display:block}
   <button class="active" data-page="dashboard"><span class="ico">▦</span>Dashboard</button>
   <button data-page="chapters"><span class="ico">☰</span>All chapters</button>
   <button data-page="notes"><span class="ico">▤</span>Notes & formulas</button>
+  <button data-page="materials"><span class="ico">📎</span>Materials</button>
   <button data-page="pyq"><span class="ico">◈</span>Practice bank</button>
   <button data-page="progress"><span class="ico">◴</span>Progress</button>
   <button data-page="quiz"><span class="ico">✓</span>Mock quiz</button>
@@ -185,7 +192,7 @@ body.auth-locked .auth-close{display:block}
  <div class="side-bottom">Your preparation. Your pace.<br>Mission IIT · Version 1.7 · Student portal</div>
 </aside>
 <main class="main">
- <header class="topbar"><div><div class="eyebrow">JEE PREPARATION HUB</div><h1 id="pageTitle">Dashboard</h1></div><div style="display:flex;align-items:center;gap:10px"><input class="field" id="globalSearch" placeholder="Search notes & questions..." aria-label="Search notes and questions" onkeydown="if(event.key==='Enter')globalSearchGo()" style="width:min(34vw,260px)"><button class="btn secondary" onclick="globalSearchGo()">Search</button><button class="profile login-trigger" id="loginTrigger" onclick="openAuth()" style="border:0;background:transparent;cursor:pointer"><span id="profileLabel">Student login</span><div class="avatar" id="profileAvatar">MI</div></button></div></header>
+ <header class="topbar"><div><div class="eyebrow">JEE PREPARATION HUB</div><h1 id="pageTitle">Dashboard</h1></div><div style="display:flex;align-items:center;gap:10px"><input class="field" id="globalSearch" placeholder="Search notes & questions..." aria-label="Search notes and questions" onkeydown="if(event.key==='Enter')globalSearchGo()" style="width:min(34vw,260px)"><button class="btn secondary" onclick="globalSearchGo()">Search</button><button class="btn ghost" id="topSignOutBtn" style="display:none" onclick="window.missionAuth&&window.missionAuth.signOut()">Log out</button><button class="profile login-trigger" id="loginTrigger" onclick="openAuth()" style="border:0;background:transparent;cursor:pointer"><span id="profileLabel">Student login</span><div class="avatar" id="profileAvatar">MI</div></button></div></header>
 
 <section class="page active" id="dashboard">
  <div class="welcome"><div><div class="tag">YOUR JOURNEY STARTS HERE</div><h2>Small steps. Strong concepts. Big goals.</h2><p>Organise your JEE preparation, revise smarter and keep your progress moving forward.</p></div><button onclick="showPage('planner')">Plan my day →</button></div>
@@ -236,6 +243,10 @@ body.auth-locked .auth-close{display:block}
  <div class="list" id="notesList"></div>
 </section>
 
+<section class="page" id="materials">
+ <div class="section-head"><h3>Study materials</h3><span>PDFs and images published by Mission IIT</span></div>
+ <div class="list" id="sharedMaterials"><div class="empty">Loading materials…</div></div>
+</section>
 <section class="page" id="pyq">
  <div class="section-head"><h3>Mission IIT practice bank</h3><span>Original chapter-wise questions</span></div>
  <div class="note">Practise with original Mission IIT questions, check worked solutions, and track your progress. These questions are independently written and are not presented as official past-year questions.</div>
@@ -334,7 +345,48 @@ body.auth-locked .auth-close{display:block}
  </div>
 </section>
 
-<section class="page" id="admin"><div class="section-head"><h3>Admin dashboard</h3><span>Restricted · verified Firebase admin claim</span></div><div class="card" style="max-width:850px"><h3>Mission IIT administration</h3><p class="sub">Visible only when the Firebase ID token contains the trusted <code>admin: true</code> custom claim.</p><div class="stats" style="grid-template-columns:repeat(2,minmax(0,1fr))"><div class="stat"><div class="stat-top">Signed-in account</div><strong id="adminEmail" style="font-size:16px;word-break:break-word">—</strong><small>Current Firebase identity</small></div><div class="stat"><div class="stat-top">Access role</div><strong style="font-size:18px">Administrator</strong><small>Verified from Firebase ID token</small></div></div><div class="note">This is an access-controlled dashboard shell. Student progress is currently stored in each browser, not centrally. Add Firestore/Cloud Functions and restrictive Security Rules before enabling shared admin operations.</div></div></section>
+<section class="page" id="admin">
+ <div class="section-head"><h3>Owner dashboard</h3><span>Private · Firebase-authorised owner only</span></div>
+ <div class="card" style="max-width:1000px">
+  <div class="stats" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
+   <div class="stat"><div class="stat-top">Signed-in owner</div><strong id="adminEmail" style="font-size:15px;word-break:break-word">—</strong><small>Verified owner account</small></div>
+   <div class="stat"><div class="stat-top">Student accounts</div><strong id="adminStudentCount">—</strong><small>Registered accounts</small></div>
+   <div class="stat"><div class="stat-top">Published notes</div><strong id="adminNoteCount">—</strong><small>Shared study material</small></div>
+   <div class="stat"><div class="stat-top">Practice questions</div><strong id="adminQuestionCount">—</strong><small>Shared question bank</small></div>
+  </div>
+  <div class="note">Owner access is granted through the Firebase Firestore admins collection and Security Rules. A hidden page or browser password is not used as security.</div>
+ </div>
+ <div class="content-grid" style="margin-top:16px">
+  <div class="card">
+   <h3>Publish study content</h3><p class="sub">Write notes, formulas, questions and solutions directly.</p>
+   <label class="support-label">Content type</label><select class="field" id="adminContentType" style="width:100%;margin:6px 0 12px"><option value="note">Study note / formula</option><option value="question">Practice question</option></select>
+   <div class="form-row"><select class="field" id="adminSubject"><option>Physics</option><option>Chemistry</option><option>Mathematics</option></select><input class="field" id="adminChapter" placeholder="Chapter name"></div>
+   <input class="field" id="adminTitle" placeholder="Title" style="width:100%;margin:10px 0">
+   <textarea id="adminBody" placeholder="Write note, question, answer or solution here..."></textarea>
+   <div class="form-row" style="margin-top:10px"><input class="field" id="adminYear" placeholder="Year (optional)"><select class="field" id="adminLevel"><option>JEE Main</option><option>JEE Advanced</option><option>Concept / Formula</option><option>Original practice</option></select></div>
+   <button class="btn" style="margin-top:12px" onclick="missionAdmin.publish()">Publish content</button>
+   <p id="adminStatus" class="sub" aria-live="polite" style="margin-top:10px"></p>
+  </div>
+  <div class="card">
+   <h3>Upload material</h3><p class="sub">Choose a PDF or image from your phone and publish it for students.</p>
+   <input class="field" type="file" id="adminUploadFile" accept=".pdf,image/*" style="width:100%;margin:8px 0">
+   <input class="field" id="adminUploadTitle" placeholder="Material title" style="width:100%;margin:8px 0">
+   <div class="form-row"><select class="field" id="adminUploadSubject"><option>Physics</option><option>Chemistry</option><option>Mathematics</option><option>Other</option></select><input class="field" id="adminUploadChapter" placeholder="Chapter (optional)"></div>
+   <button class="btn" style="margin-top:12px" onclick="missionAdmin.upload()">Upload and publish</button>
+   <p id="adminUploadStatus" class="sub" aria-live="polite" style="margin-top:10px"></p>
+   <div class="note">Use small files and stay within Firebase's free-tier storage limits. Never upload student personal information.</div>
+  </div>
+ </div>
+ <div class="card" style="margin-top:16px">
+  <div class="section-head"><h3>Published content</h3><button class="btn secondary" onclick="missionAdmin.refresh()">Refresh</button></div>
+  <div id="adminContentList" class="list"><div class="empty">Loading published content…</div></div>
+ </div>
+ <div class="card" style="margin-top:16px">
+  <div class="section-head"><h3>Student accounts</h3><button class="btn secondary" onclick="missionAdmin.loadStudents()">Refresh students</button></div>
+  <p class="sub">Shows accounts that have signed in to Mission IIT. Firebase does not allow a browser page to change or delete Auth accounts directly.</p>
+  <div id="adminStudentList" class="list"><div class="empty">Student list will appear here after owner access is configured.</div></div>
+ </div>
+</section>
 <section class="page" id="community">
  <div class="section-head"><h3>Mission IIT community</h3><span>Learn together</span></div>
  <div class="card"><h3>Community space</h3><p class="sub">A shared discussion space needs a secure online database and moderation. This local version gives you a community noticeboard preview; posts are not shared with other students.</p>
@@ -674,7 +726,7 @@ pyqs: []
   data.quizBest = Number(data.quizBest || 0);
   data.quizAttempts = Number(data.quizAttempts || 0);
   data.profile = data.profile || {name:''};
-  function save(){ try { localStorage.setItem(KEY, JSON.stringify(data)); } catch(e) { alert('Your browser storage is full or unavailable. Export your data and clear some space.'); } }
+  function save(){ try { localStorage.setItem(KEY, JSON.stringify(data)); } catch(e) { alert('Your browser storage is full or unavailable. Export your data and clear some space.'); } try { if(window.__missionSyncProgress) window.__missionSyncProgress(data); } catch(_){} }
   function markActivity(){ const d=today(); if(!data.activity.includes(d)) data.activity.push(d); data.activity=data.activity.slice(-90); save(); }
   function empty(el,msg){ if(el) el.innerHTML='<div class="empty-state sub" style="padding:18px;text-align:center">'+esc(msg)+'</div>'; }
   function setText(id,value){ const el=$(id); if(el) el.textContent=value; }
@@ -682,8 +734,8 @@ pyqs: []
     const page=$(id); if(!page || !page.classList.contains('page')) return;
     document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id===id));
     document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active', b.dataset.page===id));
-    const title=document.querySelector('#pageTitle'); if(title) title.textContent=({dashboard:'Dashboard',chapters:'All chapters',notes:'Notes & formulas',pyq:'Practice bank',progress:'My progress',quiz:'Mock quiz',planner:'Daily study planner',lectures:'Lecture tracker',revision:'Revision tracker',bookmarks:'Bookmarks',profile:'My profile',support:'Help & Support',community:'Community',admin:'Admin dashboard'})[id]||'Mission IIT';
-    if(id==='chapters') renderChapters(); if(id==='notes') renderNotes(); if(id==='pyq') renderPyq(); if(id==='planner') renderTasks(); if(id==='lectures') renderLectures(); if(id==='revision') renderRevisions(); if(id==='bookmarks') renderBookmarks(); if(id==='progress') renderProgress(); if(id==='dashboard') renderDashboard();
+    const title=document.querySelector('#pageTitle'); if(title) title.textContent=({dashboard:'Dashboard',chapters:'All chapters',notes:'Notes & formulas',materials:'Study materials',pyq:'Practice bank',progress:'My progress',quiz:'Mock quiz',planner:'Daily study planner',lectures:'Lecture tracker',revision:'Revision tracker',bookmarks:'Bookmarks',profile:'My profile',support:'Help & Support',community:'Community',admin:'Admin dashboard'})[id]||'Mission IIT';
+    if(id==='chapters') renderChapters(); if(id==='notes') renderNotes(); if(id==='materials') renderSharedMaterials(); if(id==='pyq') renderPyq(); if(id==='planner') renderTasks(); if(id==='lectures') renderLectures(); if(id==='revision') renderRevisions(); if(id==='bookmarks') renderBookmarks(); if(id==='progress') renderProgress(); if(id==='dashboard') renderDashboard();
     window.scrollTo({top:0,behavior:'smooth'});
   }
   window.showPage=showPage;
@@ -809,9 +861,28 @@ pyqs: []
   window.sendSupportRequest=sendSupportRequest;
   window.globalSearchGo=function(){const q=($('globalSearch')?.value||'').trim();if(!q)return;if($('noteSearch'))$('noteSearch').value=q;showPage('notes');};
 
+  function renderSharedMaterials(){
+    const host=$('sharedMaterials'); if(!host)return;
+    const items=(window.__missionCloudContent&&window.__missionCloudContent.materials)||[];
+    host.innerHTML=items.length?items.map(x=>`<div class="item"><div><strong>${esc(x.title||x.fileName||'Study material')}</strong><small>${esc(x.subject||'Other')} ${x.chapter?'· '+esc(x.chapter):''}</small></div><a class="btn secondary" href="${esc(x.downloadURL||'#')}" target="_blank" rel="noopener noreferrer">Open</a></div>`).join(''):'<div class="empty">No files have been published yet.</div>';
+  }
+  window.renderSharedMaterials=renderSharedMaterials;
+
+  // Merge shared Firebase material into the local display cache without replacing built-in notes.
+  window.__missionMergeCloudContent = function(cloudNotes, cloudQuestions) {
+    const notes = Array.isArray(cloudNotes) ? cloudNotes : [];
+    const questions = Array.isArray(cloudQuestions) ? cloudQuestions : [];
+    const noteIds = new Set(notes.map(x=>x.id));
+    const questionIds = new Set(questions.map(x=>x.id));
+    data.notes = data.notes.filter(x=>!x.id || !noteIds.has(x.id)).concat(notes);
+    data.questions = data.questions.filter(x=>!x.id || !questionIds.has(x.id)).concat(questions);
+    save();
+    renderNotes(); renderPyq(); renderChapters();
+  };
+
   // Initial render after DOM and built-in content are ready.
   document.addEventListener('DOMContentLoaded',()=>{
-    updateProfileUI();renderChapters();renderNotes();renderPyq();renderTasks();renderLectures();renderRevisions();renderBookmarks();renderQuiz();renderDashboard();
+    updateProfileUI();renderChapters();renderNotes();renderPyq();renderSharedMaterials();renderTasks();renderLectures();renderRevisions();renderBookmarks();renderQuiz();renderDashboard();
     document.querySelectorAll('.nav button[data-page]').forEach(b=>{if(!b.hasAttribute('type'))b.type='button';b.addEventListener('click',()=>showPage(b.dataset.page));});
   });
   // Functions are also exposed immediately for inline event handlers.
@@ -827,6 +898,13 @@ import {
   signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup,
   signOut, updateProfile, sendPasswordResetEmail
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import {
+  getFirestore, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, getDoc,
+  setDoc, serverTimestamp, query, orderBy, limit
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import {
+  getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyB0cUaRuRfcCFEaMyQScNHymxJ4Hm-fOHY",
@@ -939,7 +1017,152 @@ $('authForgot')?.addEventListener('click', async () => {
   } catch (error) { setAuthStatus(friendlyError(error), 'error'); }
 });
 
+
+async function verifyOwner(user) {
+  if (!user) return false;
+  try {
+    const snap = await getDoc(doc(db, 'admins', user.uid));
+    return snap.exists() && snap.data().enabled === true;
+  } catch (error) {
+    console.warn('Owner role check failed:', error);
+    return false;
+  }
+}
+function setAdminVisibility(allowed) {
+  const nav = $('adminNav');
+  if (nav) { nav.style.display = allowed ? 'flex' : 'none'; nav.classList.toggle('admin-only', !allowed); }
+  const signOut = $('signOutBtn');
+  const topSignOut = $('topSignOutBtn');
+  if (signOut) signOut.style.display = currentUser ? 'inline-flex' : 'none';
+  if (topSignOut) topSignOut.style.display = currentUser ? 'inline-flex' : 'none';
+  const email = $('adminEmail');
+  if (email && currentUser) email.textContent = currentUser.email || 'Owner account';
+}
+async function loadSharedContent() {
+  if (!currentUser) return;
+  try {
+    const [notesSnap, questionsSnap, materialsSnap] = await Promise.all([
+      getDocs(collection(db, 'notes')),
+      getDocs(collection(db, 'questions')),
+      getDocs(collection(db, 'materials'))
+    ]);
+    const notes = notesSnap.docs.map(d => ({...d.data(), id:d.id, source:'cloud'}));
+    const questions = questionsSnap.docs.map(d => ({...d.data(), id:d.id, source:'cloud'}));
+    const materials = materialsSnap.docs.map(d => ({...d.data(), id:d.id, source:'cloud'}));
+    window.__missionCloudContent = {notes, questions, materials};
+    if (window.__missionMergeCloudContent) window.__missionMergeCloudContent(notes, questions);
+    if (window.missionAdmin && ownerAccess) window.missionAdmin.refresh();
+  } catch (error) {
+    console.warn('Shared content could not be loaded:', error);
+  }
+}
+async function registerStudent(user) {
+  try {
+    await setDoc(doc(db, 'users', user.uid), {
+      uid:user.uid, email:user.email || '', displayName:user.displayName || '',
+      lastSeen:serverTimestamp()
+    }, {merge:true});
+  } catch (error) { console.warn('Student profile sync unavailable:', error); }
+}
+window.__missionSyncProgress = async function(localData) {
+  if(!currentUser || !localData)return;
+  try {
+    await setDoc(doc(db,'users',currentUser.uid),{
+      progress:{
+        tasks:Array.isArray(localData.tasks)?localData.tasks.length:0,
+        completedTasks:Array.isArray(localData.tasks)?localData.tasks.filter(x=>x.done).length:0,
+        lectures:Array.isArray(localData.lectures)?localData.lectures.reduce((a,x)=>a+(Number(x.done)||0),0):0,
+        quizAttempts:Number(localData.quizAttempts)||0,
+        quizBest:Number(localData.quizBest)||0,
+        activeDays:Array.isArray(localData.activity)?localData.activity.length:0
+      },lastSeen:serverTimestamp()
+    },{merge:true});
+  } catch(error) { console.warn('Progress sync unavailable:',error); }
+};
+window.missionAdmin = {
+  async publish() {
+    if (!ownerAccess || !currentUser) return setAuthStatus('Owner access is required.', 'error');
+    const type=$('adminContentType')?.value, subject=$('adminSubject')?.value || 'Physics';
+    const chapter=$('adminChapter')?.value.trim(), title=$('adminTitle')?.value.trim(), body=$('adminBody')?.value.trim();
+    const status=$('adminStatus');
+    if (!chapter || !title || !body) { if(status)status.textContent='Please fill chapter, title and content.'; return; }
+    try {
+      const item={subject,chapter,title,body,level:$('adminLevel')?.value||'JEE Main',createdAt:serverTimestamp(),createdBy:currentUser.uid};
+      if(type==='question'){item.text=body;item.year=$('adminYear')?.value.trim()||'Mission IIT';await addDoc(collection(db,'questions'),item);}
+      else await addDoc(collection(db,'notes'),item);
+      if(status)status.textContent='Published successfully.';
+      ['adminChapter','adminTitle','adminBody','adminYear'].forEach(id=>{if($(id))$(id).value='';});
+      await loadSharedContent(); await this.refresh();
+    } catch(error) { if(status)status.textContent='Could not publish: '+friendlyError(error); }
+  },
+  async upload() {
+    if (!ownerAccess || !currentUser) return;
+    const file=$('adminUploadFile')?.files?.[0], status=$('adminUploadStatus');
+    const title=$('adminUploadTitle')?.value.trim();
+    if(!file || !title){if(status)status.textContent='Choose a file and enter its title.';return;}
+    if(file.size>10*1024*1024){if(status)status.textContent='Please choose a file smaller than 10 MB.';return;}
+    if(!(file.type==='application/pdf'||file.type.startsWith('image/'))){if(status)status.textContent='Only PDF and image files are supported.';return;}
+    try{
+      if(status)status.textContent='Uploading…';
+      const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+      const path='materials/'+currentUser.uid+'/'+Date.now()+'_'+safeName;
+      const target=storageRef(storage,path);
+      await uploadBytes(target,file,{contentType:file.type});
+      const url=await getDownloadURL(target);
+      await addDoc(collection(db,'materials'),{title,subject:$('adminUploadSubject')?.value||'Other',chapter:$('adminUploadChapter')?.value.trim()||'',fileName:file.name,filePath:path,downloadURL:url,contentType:file.type,size:file.size,createdAt:serverTimestamp(),createdBy:currentUser.uid});
+      if(status)status.textContent='Uploaded and published.';
+      $('adminUploadFile').value='';$('adminUploadTitle').value='';$('adminUploadChapter').value='';
+      await this.refresh();
+    }catch(error){if(status)status.textContent='Upload failed: '+friendlyError(error);}
+  },
+  async refresh() {
+    if(!ownerAccess)return;
+    const host=$('adminContentList'); if(!host)return;
+    try{
+      const [ns,qs,ms]=await Promise.all([getDocs(collection(db,'notes')),getDocs(collection(db,'questions')),getDocs(collection(db,'materials'))]);
+      $('adminNoteCount').textContent=ns.size;$('adminQuestionCount').textContent=qs.size;
+      const all=[...ns.docs.map(d=>({id:d.id,type:'note',...d.data()})),...qs.docs.map(d=>({id:d.id,type:'question',...d.data()})),...ms.docs.map(d=>({id:d.id,type:'material',...d.data()}))];
+      host.innerHTML=all.length?all.map(x=>`<div class="item"><div><strong>${String(x.title||'Untitled').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}</strong><small>${x.type} · ${x.subject||'Other'} · ${x.chapter||''}</small></div><div style="display:flex;gap:6px"><button class="btn secondary" onclick="missionAdmin.edit('${x.type}','${x.id}')">Edit</button><button class="btn danger" onclick="missionAdmin.remove('${x.type}','${x.id}')">Delete</button></div></div>`).join(''):'<div class="empty">No published content yet.</div>';
+    }catch(error){host.innerHTML='<div class="empty">Could not load content. Check Firestore rules and setup.</div>';}
+  },
+  async edit(type,id) {
+    if(!ownerAccess)return;
+    const coll=type==='note'?'notes':type==='question'?'questions':'materials';
+    if(type==='material'){alert('To replace a file, upload the new file and delete the old item.');return;}
+    try{
+      const snap=await getDoc(doc(db,coll,id));if(!snap.exists())return;
+      const old=snap.data();
+      const title=prompt('Edit title:',old.title||'');if(title===null)return;
+      const chapter=prompt('Edit chapter:',old.chapter||'');if(chapter===null)return;
+      const body=prompt('Edit content:',old.body||old.text||'');if(body===null)return;
+      await updateDoc(doc(db,coll,id),{title:title.trim(),chapter:chapter.trim(),body:body,text:type==='question'?body:(old.text||''),updatedAt:serverTimestamp()});
+      await loadSharedContent();await this.refresh();
+    }catch(error){alert('Edit failed: '+friendlyError(error));}
+  },
+  async remove(type,id) {
+    if(!ownerAccess || !confirm('Delete this published item?'))return;
+    try{
+      const coll=type==='note'?'notes':type==='question'?'questions':'materials';
+      if(type==='material'){
+        const snap=await getDoc(doc(db,coll,id));
+        if(snap.exists() && snap.data().filePath) await deleteObject(storageRef(storage,snap.data().filePath));
+      }
+      await deleteDoc(doc(db,coll,id));await loadSharedContent();await this.refresh();
+    }catch(error){alert('Delete failed: '+friendlyError(error));}
+  },
+  async loadStudents() {
+    if(!ownerAccess)return;
+    const host=$('adminStudentList');if(!host)return;
+    try{
+      const snap=await getDocs(query(collection(db,'users'),orderBy('lastSeen','desc'),limit(100)));
+      $('adminStudentCount').textContent=snap.size;
+      host.innerHTML=snap.docs.length?snap.docs.map(d=>{const x=d.data();return `<div class="item"><div><strong>${String(x.displayName||'Student').replace(/[&<>"']/g,'')}</strong><small>${String(x.email||'').replace(/[&<>"']/g,'')} · Tasks ${Number(x.progress?.completedTasks||0)}/${Number(x.progress?.tasks||0)} · Lectures ${Number(x.progress?.lectures||0)} · Quizzes ${Number(x.progress?.quizAttempts||0)}</small></div><span class="pill">Registered</span></div>`}).join(''):'<div class="empty">No student accounts recorded yet.</div>';
+    }catch(error){host.innerHTML='<div class="empty">Student list unavailable. Check Firestore rules.</div>';}
+  }
+};
+
 onAuthStateChanged(auth, async (user) => {
+  currentUser = user || null;
   document.body.classList.remove('auth-checking');
   if (user) {
     document.body.classList.remove('auth-locked');
@@ -949,24 +1172,25 @@ onAuthStateChanged(auth, async (user) => {
     const avatar = $('profileAvatar');
     if (label) label.textContent = user.displayName || user.email || 'Student';
     if (avatar) avatar.textContent = (user.displayName || user.email || 'MI').slice(0, 2).toUpperCase();
-    try {
-      const token = await user.getIdTokenResult();
-      const isAdmin = token.claims && token.claims.admin === true;
-      const adminNav = $('adminNav');
-      if (adminNav) { adminNav.classList.toggle('admin-only', !isAdmin); adminNav.style.display = isAdmin ? 'flex' : 'none'; }
-      const adminEmail = $('adminEmail'); if (adminEmail) adminEmail.textContent = user.email || 'Signed in';
-    } catch (_) {}
+    const sub=$('profileSub'); if(sub)sub.textContent=user.email||'Signed in';
+    ownerAccess = await verifyOwner(user);
+    setAdminVisibility(ownerAccess);
+    await registerStudent(user);
+    await loadSharedContent();
+    if(ownerAccess){await window.missionAdmin.refresh();await window.missionAdmin.loadStudents();}
   } else {
+    ownerAccess = false;
     document.body.classList.add('auth-locked');
     $('authOverlay')?.classList.remove('open');
     try { localStorage.removeItem('missionIIT_session'); } catch (_) {}
     const label = $('profileLabel');
     if (label) label.textContent = 'Student login';
+    const sub=$('profileSub'); if(sub)sub.textContent='Local student profile · Not signed in';
+    setAdminVisibility(false);
     const adminNav = $('adminNav');
     if (adminNav) { adminNav.classList.add('admin-only'); adminNav.style.display = 'none'; }
   }
 });
-
 updateAuthMode();
 </script>
 </body>
