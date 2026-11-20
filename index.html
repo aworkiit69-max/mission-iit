@@ -896,6 +896,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/fireba
 import {
   getAuth, onAuthStateChanged, createUserWithEmailAndPassword,
   signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup,
+  initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence,
   signOut, updateProfile, sendPasswordResetEmail
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {
@@ -917,9 +918,53 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
+let auth;
+try {
+  auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence] });
+} catch (e) { auth = getAuth(app); }
+const db = getFirestore(app);
+const storage = getStorage(app);
 const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: 'select_account' });
+// ---- Backup: local account (jab Firebase block/fail ho) ----
+const LOCAL_USERS_KEY = 'missionIIT_local_users';
+const LOCAL_SESSION_KEY = 'missionIIT_local_session';
+const lsGet = (k) => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (_) { return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} };
+async function hashPw(pw) {
+  try {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('mission-iit:' + pw));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch (_) { return 'p:' + btoa(unescape(encodeURIComponent(pw))); }
+}
+const FIREBASE_BLOCK = /permission-denied|referer|API_KEY|app\/timeout|network-request-failed|operation-not-supported|internal-error|invalid-api-key/i;
+function shouldFallback(error) { return FIREBASE_BLOCK.test(((error && error.code) || '') + ' ' + ((error && error.message) || '')); }
+async function localSignUp(name, email, password) {
+  const users = lsGet(LOCAL_USERS_KEY) || {};
+  const key = email.toLowerCase();
+  if (users[key]) throw { code: 'auth/email-already-in-use' };
+  users[key] = { name, email, hash: await hashPw(password) };
+  lsSet(LOCAL_USERS_KEY, users);
+  return { uid: 'local_' + key, email, displayName: name, isLocal: true };
+}
+async function localSignIn(email, password) {
+  const users = lsGet(LOCAL_USERS_KEY) || {};
+  const u = users[email.toLowerCase()];
+  if (!u) throw { code: 'auth/user-not-found' };
+  if (u.hash !== await hashPw(password)) throw { code: 'auth/wrong-password' };
+  return { uid: 'local_' + email.toLowerCase(), email: u.email, displayName: u.name, isLocal: true };
+}
 let isSignup = false;
+let currentUser = null;
+let ownerAccess = false;
+const isHostedOrigin = /^https?:$/.test(location.protocol) && location.hostname !== '';
+// Kisi bhi request ko hamesha ke liye atakne se roko
+function withTimeout(promise, ms = 20000) {
+  return Promise.race([
+    promise,
+    new Promise((_, rej) => setTimeout(() => rej({ code: 'app/timeout' }), ms))
+  ]);
+}
 
 const $ = (id) => document.getElementById(id);
 function setAuthStatus(message, type = '') {
@@ -942,9 +987,15 @@ function friendlyError(error) {
     'auth/popup-blocked': 'Your browser blocked the sign-in popup. Allow popups and try again.',
     'auth/unauthorized-domain': 'This website domain is not authorised in Firebase. Add it in Authentication → Settings → Authorized domains.',
     'auth/operation-not-allowed': 'This sign-in method is not enabled. Enable it in Firebase Authentication → Sign-in method.',
+    'app/timeout': 'Server se response nahi aaya. Internet check karo aur Firebase API key restrictions (Google Cloud → Credentials) dekho.',
+    'auth/permission-denied-on-the-service': 'Firebase API key is origin ko allow nahi kar rahi. Google Cloud Console → Credentials mein key ki Application restrictions ko None karo.',
+    'auth/requests-from-referer-<empty>-are-blocked': 'API key restriction is page ko block kar rahi hai. Google Cloud Console → Credentials mein key ki Application restrictions ko None karo.',
+    'auth/operation-not-supported-in-this-environment': 'Ye page file se khula hai. Google login ke liye https link chahiye; email login try karo.',
     'auth/network-request-failed': 'Network error. Check your internet connection and try again.',
     'auth/too-many-requests': 'Too many attempts. Wait a little and try again.'
   };
+  const raw = (error && error.message) || '';
+  if (/permission-denied-on-the-service|referer|API_KEY_HTTP_REFERRER_BLOCKED/i.test(code + raw)) return messages['auth/permission-denied-on-the-service'];
   return messages[code] || (error && error.message ? error.message : 'Something went wrong. Please try again.');
 }
 function setBusy(busy) {
@@ -977,13 +1028,18 @@ window.closeAuth = function () { $('authOverlay')?.classList.remove('open'); };
 window.toggleAuthMode = function () { isSignup = !isSignup; updateAuthMode(); setAuthStatus(''); };
 window.missionAuth = {
   googleSignIn: async function () {
+    if (!isHostedOrigin) {
+      setAuthStatus('File se kholne par Google login nahi chalta. Neeche Email + Password se login karo.', 'error');
+      return;
+    }
     setBusy(true); setAuthStatus('Connecting to Google…');
-    try { await signInWithPopup(auth, googleProvider); }
+    const safety = setTimeout(() => { setBusy(false); setAuthStatus('Google se response nahi aaya. Popup allow karke dobara try karo.', 'error'); }, 45000);
+    try { await signInWithPopup(auth, googleProvider); setAuthStatus(''); }
     catch (error) { setAuthStatus(friendlyError(error), 'error'); }
-    finally { setBusy(false); }
+    finally { clearTimeout(safety); setBusy(false); }
   },
   signOut: async function () {
-    try { await signOut(auth); }
+    try { try { localStorage.removeItem(LOCAL_SESSION_KEY); } catch (_) {} await signOut(auth); handleAuthUser(null); }
     catch (error) { setAuthStatus(friendlyError(error), 'error'); }
   }
 };
@@ -997,12 +1053,26 @@ $('authForm')?.addEventListener('submit', async (event) => {
     if (isSignup) {
       const name = $('authName')?.value.trim();
       if (!name) throw new Error('Please enter your full name.');
-      const credential = await createUserWithEmailAndPassword(auth, email, password);
-      await updateProfile(credential.user, { displayName: name });
-      setAuthStatus('Account created successfully. Welcome to Mission IIT!', 'success');
+      try {
+        const credential = await withTimeout(createUserWithEmailAndPassword(auth, email, password));
+        try { await withTimeout(updateProfile(credential.user, { displayName: name }), 8000); } catch (_) {}
+        setAuthStatus('Account created successfully. Welcome to Mission IIT!', 'success');
+      } catch (fbErr) {
+        if (!shouldFallback(fbErr)) throw fbErr;
+        const lu = await localSignUp(name, email, password);
+        lsSet(LOCAL_SESSION_KEY, lu); handleAuthUser(lu);
+        setAuthStatus('Account is phone par save ho gaya (offline mode).', 'success');
+      }
     } else {
-      await signInWithEmailAndPassword(auth, email, password);
-      setAuthStatus('Signed in successfully.', 'success');
+      try {
+        await withTimeout(signInWithEmailAndPassword(auth, email, password));
+        setAuthStatus('Signed in successfully.', 'success');
+      } catch (fbErr) {
+        if (!shouldFallback(fbErr)) throw fbErr;
+        const lu = await localSignIn(email, password);
+        lsSet(LOCAL_SESSION_KEY, lu); handleAuthUser(lu);
+        setAuthStatus('Signed in (offline mode).', 'success');
+      }
     }
   } catch (error) { setAuthStatus(friendlyError(error), 'error'); }
   finally { setBusy(false); }
@@ -1012,7 +1082,7 @@ $('authForgot')?.addEventListener('click', async () => {
   const email = $('authEmail')?.value.trim();
   if (!email) { setAuthStatus('Enter your email address first, then tap Forgot password.', 'error'); return; }
   try {
-    await sendPasswordResetEmail(auth, email);
+    await withTimeout(sendPasswordResetEmail(auth, email));
     setAuthStatus('Password reset email sent. Check your inbox and spam folder.', 'success');
   } catch (error) { setAuthStatus(friendlyError(error), 'error'); }
 });
@@ -1161,7 +1231,12 @@ window.missionAdmin = {
   }
 };
 
-onAuthStateChanged(auth, async (user) => {
+window.__handleAuthUser = (u) => handleAuthUser(u);
+onAuthStateChanged(auth, (user) => {
+  if (!user) { const ls = lsGet(LOCAL_SESSION_KEY); if (ls) { handleAuthUser(ls); return; } }
+  handleAuthUser(user);
+});
+async function handleAuthUser(user) {
   currentUser = user || null;
   document.body.classList.remove('auth-checking');
   if (user) {
@@ -1173,10 +1248,9 @@ onAuthStateChanged(auth, async (user) => {
     if (label) label.textContent = user.displayName || user.email || 'Student';
     if (avatar) avatar.textContent = (user.displayName || user.email || 'MI').slice(0, 2).toUpperCase();
     const sub=$('profileSub'); if(sub)sub.textContent=user.email||'Signed in';
-    ownerAccess = await verifyOwner(user);
+    ownerAccess = user.isLocal ? false : await Promise.race([verifyOwner(user), new Promise(r => setTimeout(() => r(false), 6000))]);
     setAdminVisibility(ownerAccess);
-    await registerStudent(user);
-    await loadSharedContent();
+    if (!user.isLocal) { registerStudent(user); loadSharedContent(); }
     if(ownerAccess){await window.missionAdmin.refresh();await window.missionAdmin.loadStudents();}
   } else {
     ownerAccess = false;
@@ -1190,7 +1264,7 @@ onAuthStateChanged(auth, async (user) => {
     const adminNav = $('adminNav');
     if (adminNav) { adminNav.classList.add('admin-only'); adminNav.style.display = 'none'; }
   }
-});
+}
 updateAuthMode();
 </script>
 </body>
