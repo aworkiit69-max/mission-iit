@@ -1034,7 +1034,7 @@ window.missionAuth = {
     }
     setBusy(true); setAuthStatus('Connecting to Google…');
     const safety = setTimeout(() => { setBusy(false); setAuthStatus('Google se response nahi aaya. Popup allow karke dobara try karo.', 'error'); }, 45000);
-    try { await signInWithPopup(auth, googleProvider); setAuthStatus(''); }
+    try { const gc = await signInWithPopup(auth, googleProvider); setAuthStatus(''); handleAuthUser(gc.user); }
     catch (error) { setAuthStatus(friendlyError(error), 'error'); }
     finally { clearTimeout(safety); setBusy(false); }
   },
@@ -1057,6 +1057,7 @@ $('authForm')?.addEventListener('submit', async (event) => {
         const credential = await withTimeout(createUserWithEmailAndPassword(auth, email, password));
         try { await withTimeout(updateProfile(credential.user, { displayName: name }), 8000); } catch (_) {}
         setAuthStatus('Account created successfully. Welcome to Mission IIT!', 'success');
+        handleAuthUser({ uid: credential.user.uid, email: credential.user.email || email, displayName: name, isLocal: false });
       } catch (fbErr) {
         if (!shouldFallback(fbErr)) throw fbErr;
         const lu = await localSignUp(name, email, password);
@@ -1065,8 +1066,9 @@ $('authForm')?.addEventListener('submit', async (event) => {
       }
     } else {
       try {
-        await withTimeout(signInWithEmailAndPassword(auth, email, password));
+        const cred = await withTimeout(signInWithEmailAndPassword(auth, email, password));
         setAuthStatus('Signed in successfully.', 'success');
+        handleAuthUser(cred.user);
       } catch (fbErr) {
         if (!shouldFallback(fbErr)) throw fbErr;
         const lu = await localSignIn(email, password);
@@ -1237,6 +1239,13 @@ onAuthStateChanged(auth, (user) => {
   handleAuthUser(user);
 });
 async function handleAuthUser(user) {
+  try { await _handleAuthUser(user); }
+  catch (e) {
+    console.warn('Auth UI error:', e);
+    if (user) { document.body.classList.remove('auth-locked', 'auth-checking'); $('authOverlay')?.classList.remove('open'); }
+  }
+}
+async function _handleAuthUser(user) {
   currentUser = user || null;
   document.body.classList.remove('auth-checking');
   if (user) {
@@ -1266,6 +1275,7 @@ async function handleAuthUser(user) {
   }
 }
 updateAuthMode();
+setTimeout(() => document.body.classList.remove('auth-checking'), 4000);
 </script>
 </body>
 </html>
