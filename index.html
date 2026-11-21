@@ -1367,10 +1367,10 @@ async function verifyStaff(user) {
     const snap = await getDoc(doc(db, 'admins', user.uid));
     if (!snap.exists()) return {role:"student"};
     const data = snap.data();
-    // The owner record is provisioned manually in Firestore. An omitted enabled
-    // flag is accepted only for the matching owner email; an explicit false disables it.
-    if (data.role === 'owner' && data.enabled !== false &&
-        String(data.email || '').toLowerCase() === String(user.email || '').toLowerCase()) return {role:'owner',permissions:{}};
+    // The admins document is keyed by the Firebase Auth UID.
+    // The UID + role + enabled flag are the owner check; email casing/aliases
+    // must not accidentally hide the Owner dashboard.
+    if (data.role === 'owner' && data.enabled !== false) return {role:'owner',permissions:{}};
     if (data.role === 'admin' && data.enabled === true) return {role:'admin',permissions:data.permissions||{}};
     return {role:'student'};
   } catch (error) { console.warn('Staff role check failed:', error); return {role:"student"}; }
@@ -1781,7 +1781,9 @@ async function _handleAuthUser(user) {
     if (label) label.textContent = user.displayName || user.email || 'Student';
     if (avatar) avatar.textContent = (user.displayName || user.email || 'MI').slice(0, 2).toUpperCase();
     const sub=$('profileSub'); if(sub)sub.textContent=user.email||'Signed in';
-    const staff=await Promise.race([verifyStaff(user),new Promise(r=>setTimeout(()=>r({role:'student'}),6000))]);
+    // Do not downgrade a valid Owner to Student just because Firestore
+    // takes longer than an arbitrary timeout to return the role document.
+    const staff=await verifyStaff(user);
     currentRole=staff.role;ownerAccess=staff.role==='owner';adminAccess=staff.role==='admin';currentPermissions=staff.permissions||{};
     setAdminVisibility(ownerAccess||adminAccess);
     if (!user.isLocal) { registerStudent(user); loadSharedContent(); }
