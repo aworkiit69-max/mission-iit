@@ -1362,18 +1362,26 @@ $('authForgot')?.addEventListener('click', async () => {
 
 
 async function verifyStaff(user) {
-  if (!user || user.isLocal) return {role:"student"};
+  if (!user || user.isLocal) {
+    alert('Mission IIT staff check: this is a local/offline session, not a Firebase account. Sign in with the Firebase account that owns the admins record.');
+    return {role:"student"};
+  }
   try {
     const snap = await getDoc(doc(db, 'admins', user.uid));
-    if (!snap.exists()) return {role:"student"};
+    if (!snap.exists()) {
+      alert('Mission IIT staff check: Firebase sign-in succeeded, but no document was found at admins/{your signed-in UID}. Check that the admins document ID exactly matches this account UID.');
+      return {role:"student"};
+    }
     const data = snap.data();
-    // The admins document is keyed by the Firebase Auth UID.
-    // The UID + role + enabled flag are the owner check; email casing/aliases
-    // must not accidentally hide the Owner dashboard.
     if (data.role === 'owner' && data.enabled !== false) return {role:'owner',permissions:{}};
     if (data.role === 'admin' && data.enabled === true) return {role:'admin',permissions:data.permissions||{}};
+    alert('Mission IIT staff check: admins document was found, but role/enabled values do not qualify. Current role: ' + String(data.role) + ' | enabled: ' + String(data.enabled) + '. Expected owner with enabled not false, or admin with enabled true.');
     return {role:'student'};
-  } catch (error) { console.warn('Staff role check failed:', error); return {role:"student"}; }
+  } catch (error) {
+    console.warn('Staff role check failed:', error);
+    alert('Mission IIT staff check failed while reading Firestore. Error: ' + String(error.code || '') + ' ' + String(error.message || error));
+    return {role:"student"};
+  }
 }
 function setAdminVisibility(allowed) {
   const nav=$('adminNav');
